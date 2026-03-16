@@ -1,0 +1,25 @@
+# AGENTS.md
+
+## Project
+Codex History Search
+
+Local web GUI for browsing and searching Codex CLI session history.
+
+## Stack
+Node.js
+Express
+SQLite
+React
+
+## Rules
+- Original Codex session logs are read-only
+- Store custom metadata separately in SQLite
+- Build MVP first
+- Keep dependencies minimal
+
+## Workflow
+1. propose structure
+2. propose schema
+3. implement backend
+4. implement frontend
+5. connect resume

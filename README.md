@@ -1,364 +1,222 @@
 # Codex History Helper
 
-A local-first Web GUI for browsing, searching, annotating, and resuming **Codex CLI session history**.
+Codex History Helper is a local-first web UI for browsing, searching, annotating, hiding, and resuming Codex CLI sessions.
 
-This tool converts your local Codex sessions into a searchable knowledge base so you can easily find previous prompts, commands, debugging sessions, and solutions.
+It reads Codex session JSONL files from disk, indexes them into SQLite, and layers user-managed metadata on top without modifying the original logs.
 
-Instead of remembering many CLI commands or digging through JSON logs, this application provides a clean graphical interface.
-
----
-
-# Motivation
-
-Codex CLI stores all conversation sessions locally, but they are saved as JSONL log files that are not easy to browse manually.
-
-Each session is stored under:
-
-~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
-
-Each JSONL file contains the full conversation history including:
-
-- user prompts
-- assistant replies
-- tool calls
-- shell commands
-- command outputs
-- errors
-- token usage
-- metadata
-
-While these logs are extremely valuable, they are difficult to search and navigate.
-
-This project builds a **local Web interface** on top of those session logs.
-
----
-
-# Features
-
-## Session browsing
-
-- List recent Codex sessions
-- Group sessions by repository / working directory
-- View session metadata (time, repo path, model, etc.)
-
-## Full-text search
-
-Search across:
-
-- user prompts
-- assistant replies
-- shell commands
-- shell outputs
-- errors
-
-Search results show highlighted snippets and matched content.
-
-## Session detail view
-
-Display full session transcripts including:
-
-- prompts
-- responses
-- commands
-- outputs
-- errors
-
-All content is displayed in a scrollable interface.
-
-## Custom summaries
-
-Users can add or edit a **manual summary** for each session.
-
-Summary priority:
-
-1. custom summary
-2. auto-generated summary
-3. first prompt preview
-
-## Tags
-
-Add tags such as:
-
-- `debug`
-- `docker`
-- `gsm`
-- `deployment`
-- `refactor`
-
-Tags help organize sessions into meaningful groups.
-
-## Pinned sessions
-
-Mark important sessions as favorites.
-
-Pinned sessions appear at the top of the list.
-
-## Resume sessions
-
-Resume a previous Codex CLI session directly from the interface.
-
-The application calls:
-
-codex resume <session-id>
-
-This allows you to continue working where you left off.
-
----
-
-# Architecture
-
-This application is **local-first** and does not require internet access.
-
-## Stack
-
-Backend
+## Current stack
 
 - Node.js
 - Express
-
-Database
-
-- SQLite
-- SQLite FTS (full text search)
-
-Frontend
-
+- SQLite via `better-sqlite3`
 - React
+- esbuild
 
-Platform
+## What the app does
 
-- Linux / macOS local machine
+- Scans local Codex session files under `~/.codex/sessions`
+- Parses JSONL logs defensively without assuming a stable schema
+- Indexes searchable content into SQLite FTS5
+- Shows sessions in a three-panel UI
+- Supports full-text search across prompts, replies, commands, outputs, and errors
+- Lets you edit custom summaries
+- Lets you manage tags
+- Lets you pin important sessions
+- Lets you hide sessions in SQLite without deleting source files
+- Lets you toggle hidden sessions globally with `Show hidden`
+- Opens `codex resume <session-id>` in a terminal emulator
 
----
+## UI layout
 
-# Design Principles
+- Top toolbar: tabs, search, repo filter, `Show hidden`, reindex
+- Left panel: session list or search results
+- Middle panel: transcript
+- Right panel: summary, tags, facts, pin/hide/resume actions
 
-## Local-first
+Transcript behavior:
 
-All data remains on your machine.
+- `response_item:message / developer` is collapsed by default
+- AGENTS/bootstrap `response_item:message / user` entries are collapsed by default
+- `response_item:function_call_output` is collapsed by default
 
-No cloud services required.
+Session title behavior:
 
-## Read-only Codex logs
+- `custom_summary` is used first if present
+- otherwise the app derives a human-readable title from the first real user message
+- AGENTS/bootstrap and environment wrapper messages are skipped when resolving titles
 
-Original Codex session logs are **never modified**.
+## Local-first rules
 
-The application only reads:
+- Original Codex session files are treated as read-only
+- All custom metadata is stored separately in SQLite
+- Hiding a session only affects the database-backed UI, not the source JSONL file
 
-~/.codex/sessions/
+## Project layout
 
-Custom metadata is stored separately in SQLite.
+```text
+backend/
+  src/
+    config.js
+    db/
+      index.js
+      schema.js
+    indexer/
+      indexer.js
+    lib/
+      fs.js
+      resume.js
+    parser/
+      extract.js
+      index.js
+    routes/
+      api.js
+    server.js
 
-## Robust parsing
+frontend/
+  index.html
+  src/
+    api.js
+    App.jsx
+    components/
+      MetadataPanel.jsx
+      SearchResults.jsx
+      SessionList.jsx
+      Toolbar.jsx
+      TranscriptView.jsx
+    styles/
+      app.css
 
-Codex session logs may change across versions.
+data/
+  history.db
+```
 
-The parser is designed to:
+## Install
 
-- tolerate unknown fields
-- gracefully skip corrupted sessions
-- avoid breaking if the schema evolves
-
-## Simple architecture
-
-This project prioritizes:
-
-- maintainability
-- readability
-- minimal dependencies
-
----
-
-# Project Structure
-codex-history-search
-│
-├── backend
-│ ├── parser
-│ ├── routes
-│ ├── database
-│ └── server.js
-│
-├── frontend
-│ ├── src
-│ └── public
-│
-├── data
-│ └── history.db
-│
-├── AGENTS.md
-└── README.md
-
-
----
-
-# Database Schema
-
-Main tables:
-
-## sessions
-
-Stores session metadata.
-
-Fields include:
-
-- session_id
-- started_at
-- updated_at
-- repo_path
-- model
-- auto_summary
-- custom_summary
-- pinned
-
-## entries
-
-Stores parsed conversation entries.
-
-Types include:
-
-- prompt
-- assistant
-- command
-- output
-- error
-
-## tags
-
-Tag definitions.
-
-## session_tags
-
-Mapping between sessions and tags.
-
----
-
-# How It Works
-
-1. Scan `~/.codex/sessions`
-2. Parse JSONL session logs
-3. Extract structured entries
-4. Store searchable content in SQLite
-5. Provide REST APIs
-6. Render sessions via React UI
-
----
-
-# UI Layout
-
-Three-column layout:
-
-Left panel
-
-Session list and search results.
-
-Center panel
-
-Full session transcript.
-
-Right panel
-
-Metadata and actions.
-
-Top toolbar
-
-- search
-- repo filter
-- tag filter
-- tabs
-
----
-
-# Setup
-
-## Requirements
-
-- Node.js 18+
-- Codex CLI installed
-- Linux or macOS
-
-## Clone repository
-
-git clone <repo>
-cd codex-history-search
-
-
-## Install backend dependencies
-
-cd backend
+```bash
 npm install
+```
 
+## Run
 
-## Install frontend dependencies
+```bash
+npm start
+```
 
-cd ../frontend
-npm install
+`npm start` builds the frontend bundle and starts a single Express server that serves both the UI and the API.
 
+Default URL:
 
-## Run development server
+```text
+http://localhost:3123
+```
 
-Open:
+## Configuration
 
-http://localhost:3000
+- `PORT`: HTTP port, default `3123`
+- `CODEX_SESSIONS_DIR`: override the source session directory
+- `CODEX_HISTORY_DB_PATH`: override the SQLite DB path
+- `CODEX_RESUME_TERMINAL`: override the terminal launcher used for `resume`
 
----
+## Data model
 
-# Example Use Cases
+### `sessions`
 
-## Find a previous debugging session
+Indexed immutable session metadata derived from JSONL files.
 
-Search:
+### `entries`
 
+Normalized transcript rows plus extracted searchable text and raw JSON.
 
-and instantly locate the session where it was solved.
+### `session_metadata`
 
-## Resume unfinished work
+Mutable UI metadata:
 
-Click "Resume Session" to continue the previous conversation.
+- `custom_summary`
+- `pinned`
+- `archived`
 
-## Build a personal coding knowledge base
+### `tags`
 
-Over time your Codex sessions become searchable engineering documentation.
+Tag names.
 
----
+### `session_tags`
 
-# Limitations
+Many-to-many link between sessions and tags.
 
-- Requires Codex CLI session logs
-- Session schema may evolve
-- Very large history directories may require indexing time
+### `entries_fts`
 
----
+SQLite FTS5 index for search.
 
-# Future Improvements
+## API
 
-Possible future features:
+### Read APIs
 
-- session analytics
-- command frequency statistics
-- error clustering
-- git commit integration
-- export sessions to Markdown
-- multi-machine sync
+- `GET /api/sessions`
+- `GET /api/sessions?repo=/path/to/repo`
+- `GET /api/sessions?includeArchived=1`
+- `GET /api/sessions/:id`
+- `GET /api/search?q=keyword`
+- `GET /api/search?q=keyword&repo=/path/to/repo`
+- `GET /api/search?q=keyword&includeArchived=1`
 
----
+### Update APIs
 
+- `POST /api/sessions/:id/summary`
+- `POST /api/sessions/:id/tags`
+- `POST /api/sessions/:id/pin`
+- `POST /api/sessions/:id/hide`
+- `POST /api/sessions/:id/resume`
+- `POST /api/reindex`
 
+Example request bodies:
 
-# Contributing
+```json
+{ "summary": "Short custom note" }
+```
 
-Contributions are welcome.
+```json
+{ "tags": ["debug", "deployment"] }
+```
 
-Possible areas:
+```json
+{ "pinned": true }
+```
 
-- parser improvements
-- UI enhancements
-- performance optimization
-- schema evolution support
+```json
+{ "archived": true }
+```
 
----
+## Search behavior
 
-# Acknowledgements
+- Search uses SQLite FTS5
+- Search results include a snippet and match type
+- Hidden sessions are excluded unless `includeArchived=1` is set
 
-Inspired by the need for a practical interface on top of Codex CLI session logs.
+## Resume behavior
 
-Codex CLI already stores full transcripts locally; this project focuses on making them easier to browse and search.
+The app does not resume inside the browser. It launches a local terminal emulator and runs:
+
+```bash
+codex resume <session-id>
+```
+
+Common Linux terminal launchers are supported, and `CODEX_RESUME_TERMINAL` can override the default behavior.
+
+## Reindex behavior
+
+- Sessions are indexed on server startup
+- `POST /api/reindex` forces a full reindex
+- Reindexing refreshes parsed session data while preserving SQLite metadata such as custom summaries, tags, pin state, and hidden state
+
+## Design notes
+
+- The parser is resilient by design and keeps `raw_json` for transcript entries
+- Unknown log structures are not treated as fatal
+- Source file deletion is intentionally not part of the app
+- Hiding is implemented as a database-only soft delete
+
+## Current limitations
+
+- Auto-generated session titles are heuristic, not semantic summaries
+- Log formats vary across Codex versions and IDE/CLI flows, so extraction is best-effort
+- Resume depends on `codex` being available locally and on a usable terminal emulator
